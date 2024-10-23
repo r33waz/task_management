@@ -2,13 +2,13 @@ import pool from "../utils/dbConnection.js";
 
 import path from "path";
 
+
 export const CreateTask = async (req, res) => {
   console.log("req.file", req.file);
-  const { title, description, user_id, created_at } = req.body;
-  console.log(title, description, created_at);
+  const { title, description, userid, due_date } = req.body;
+  console.log(userid)
 
   try {
-    // Validate the inputs
     if (!title) {
       return res.status(400).json({
         status: false,
@@ -23,17 +23,27 @@ export const CreateTask = async (req, res) => {
       });
     }
 
-    const filePath = req.file.path;
+    if (!due_date) {
+      return res.status(400).json({
+        status: false,
+        message: "Please provide due date",
+      });
+    }
 
-    // Construct the URL for the image
-    const imageUrl = `http://localhost:8085/uploads/${path.basename(filePath)}`;
-    const createdDate = created_at
-      ? created_at
-      : new Date().toISOString().split("T")[0].slice(0, 10);
+    let imageUrl = null; 
+
+    if (req.file) {
+      const filePath = req.file.path;
+      console.log("filePath", filePath);
+      imageUrl = `http://localhost:8085/uploads/${path.basename(filePath)}`;
+    }
+
+    const createdDate =
+      req.body.created_at || new Date().toISOString().split("T")[0];
 
     const result = await pool.query(
-      "INSERT INTO task (title, description, file, userid, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [title, description, imageUrl, user_id, created_at || createdDate]
+      "INSERT INTO task (title, description, file, userid, created_at, due_date) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+      [title, description, imageUrl, userid, createdDate, due_date]
     );
 
     return res.status(200).json({
@@ -50,18 +60,37 @@ export const CreateTask = async (req, res) => {
   }
 };
 
+
 //get single user task
 
 export const GetSingleUserTask = async (req, res) => {
   try {
     const { id } = req.params;
     console.log(id);
-    const result = await pool.query("SELECT * FROM task WHERE userid = $1", [
-      id,
-    ]);
+
+    const result = await pool.query(
+      `SELECT title,
+       description, 
+       file, 
+       userid, 
+       TO_CHAR(created_at, 'YYYY-MM-DD') as created_at,
+       TO_CHAR(due_date, 'YYYY-MM-DD') as due_date, 
+       status, 
+       task_id 
+       FROM task WHERE userid = $1 ORDER BY created_at ASC `,
+      [id]
+    );
+
+    const tasksWithFileNames = result.rows.map((task) => {
+      return {
+        ...task,
+        file: task.file ? task.file.split("/").pop() : null,
+      };
+    });
+
     return res.status(200).json({
       status: true,
-      data: result.rows,
+      data: tasksWithFileNames,
     });
   } catch (error) {
     console.log(error);
@@ -100,10 +129,13 @@ export const DeletePost = async (req, res) => {
 //eidit post
 export const UpdateTask = async (req, res) => {
   const { id } = req.params;
-  const { title, description,  created_at,status } = req.body;
+  const { title, description, created_at, status,due_date } = req.body;
+  console.log("req.file", req.file);
 
   try {
-    const task = await pool.query("SELECT * FROM task WHERE task_id = $1", [id]);
+    const task = await pool.query("SELECT * FROM task WHERE task_id = $1", [
+      id,
+    ]);
 
     if (task.rows.length === 0) {
       return res.status(404).json({
@@ -112,7 +144,7 @@ export const UpdateTask = async (req, res) => {
       });
     }
 
-    let imageUrl = task.rows[0].file; 
+    let imageUrl = task.rows[0].file;
 
     if (req.file) {
       const filePath = req.file.path;
@@ -125,13 +157,15 @@ export const UpdateTask = async (req, res) => {
            description = COALESCE($2, description), 
            file = COALESCE($3, file), 
            created_at = COALESCE($4, created_at) ,
-           status = COALESCE($5, status)
-       WHERE task_id = $6 RETURNING *`,
+           due_date = COALESCE($5, due_date) ,
+           status = COALESCE($6, status)
+       WHERE task_id = $7 RETURNING *`,
       [
         title,
         description,
-        imageUrl, 
+        imageUrl,
         created_at || task.rows[0].created_at,
+        due_date || task.rows[0].due_date,
         status,
         id,
       ]
@@ -140,7 +174,7 @@ export const UpdateTask = async (req, res) => {
     return res.status(200).json({
       status: true,
       message: "Task updated successfully",
-      data: updatedTask.rows[0], 
+      data: updatedTask.rows[0],
     });
   } catch (error) {
     console.log(error);
@@ -150,4 +184,3 @@ export const UpdateTask = async (req, res) => {
     });
   }
 };
-

@@ -42,7 +42,9 @@ function Login() {
       const resp = await main_url.post("/login", data);
       console.log("response", resp.data?.message);
       if (resp.data?.status) {
-        localStorage.setItem("token", resp.data?.token);
+        localStorage.setItem("user", JSON.stringify(resp.data?.user));
+        localStorage.setItem("accessToken", resp.data.accessToken);
+        localStorage.setItem("refreshToken", resp.data.refreshToken);
         SuccessToast({
           message: resp.data?.message,
         });
